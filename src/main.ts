@@ -1,14 +1,18 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Enable CORS for frontend integration
-  app.enableCors();
+  app.use(cookieParser());
 
-  // Swagger configuration
+  app.enableCors({
+    origin: 'http://localhost:3001',
+    credentials: true,
+  });
+
   const config = new DocumentBuilder()
     .setTitle('Notes API')
     .setDescription('A simple notes application API')
