@@ -8,10 +8,10 @@ async function bootstrap() {
 
   app.use(cookieParser());
 
-  app.enableCors({
-    origin: ['http://localhost:3001', 'https://myworkspace-v.netlify.app'],
-    credentials: true,
-  });
+  // app.enableCors({
+  //   origin: ['http://localhost:3001', 'https://myworkspace-v.netlify.app'],
+  //   credentials: true,
+  // });
 
   const config = new DocumentBuilder()
     .setTitle('Notes API')
