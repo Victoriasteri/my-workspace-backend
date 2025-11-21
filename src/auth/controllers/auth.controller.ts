@@ -2,10 +2,11 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Post,
   Req,
   Res,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiOperation,
@@ -22,19 +23,22 @@ import {
   UserResponseDto,
 } from 'src/users/dto/user-response.dto';
 import { UserLoginDto } from 'src/users/dto/user-login.dto';
-import { AuthGuard } from '@nestjs/passport';
+import { Public } from '../decorators/public.decorator';
+import type { RequestWithUser } from '../types/request-with-user.type';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  @Public()
   @Post('/register')
   @ApiOperation({ summary: 'User authentication' })
   async registerNewUser(@Body() user: CreateUserDto): Promise<UserResponseDto> {
     return await this.authService.createUser(user);
   }
 
+  @Public()
   @Post('/login')
   @ApiOperation({ summary: 'User login' })
   async loginUser(
@@ -52,7 +56,25 @@ export class AuthController {
     return { user };
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @Post('/logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'User logout' })
+  @ApiResponse({
+    status: 200,
+    description: 'User has been successfully logged out',
+  })
+  async logout(
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ message: string }> {
+    res.clearCookie('access_token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+    });
+
+    return { message: 'Logged out successfully' };
+  }
+
   @Get('/me')
   @ApiOperation({ summary: 'Get current authenticated user' })
   @ApiResponse({
@@ -64,7 +86,7 @@ export class AuthController {
     status: 401,
     description: 'Unauthorized - Invalid or missing token',
   })
-  async getMe(@Req() req): Promise<MeResponseDto> {
+  async getMe(@Req() req: RequestWithUser): Promise<MeResponseDto> {
     return req.user;
   }
 }

@@ -12,6 +12,7 @@ import {
   ValidationPipe,
   UseInterceptors,
   UploadedFile,
+  Req,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -28,11 +29,23 @@ import { NoteResponseDto } from '../dto/note-response.dto';
 import { NoteAttachment } from '../entities/note-attachment.entity';
 import { NoteService } from '../services/note.service';
 import { NoteAttachmentResponseDto } from '../dto/note-attachment-response.dto';
+import type { RequestWithUser } from 'src/auth/types/request-with-user.type';
 
 @ApiTags('notes')
 @Controller('notes')
 export class NoteController {
   constructor(private readonly noteService: NoteService) {}
+  @Get()
+  @ApiOperation({ summary: 'Get all notes' })
+  @ApiResponse({
+    status: 200,
+
+    description: 'Return all notes.',
+    type: [NoteResponseDto],
+  })
+  async findAll(@Req() req: RequestWithUser): Promise<NoteResponseDto[]> {
+    return await this.noteService.findAll(req.user.userId);
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -43,19 +56,11 @@ export class NoteController {
     type: NoteResponseDto,
   })
   @UsePipes(new ValidationPipe({ forbidNonWhitelisted: true }))
-  async create(@Body() createNoteDto: CreateNoteDto): Promise<NoteResponseDto> {
-    return await this.noteService.create(createNoteDto);
-  }
-
-  @Get()
-  @ApiOperation({ summary: 'Get all notes' })
-  @ApiResponse({
-    status: 200,
-    description: 'Return all notes.',
-    type: [NoteResponseDto],
-  })
-  async findAll(): Promise<NoteResponseDto[]> {
-    return await this.noteService.findAll();
+  async create(
+    @Req() req: RequestWithUser,
+    @Body() createNoteDto: CreateNoteDto,
+  ): Promise<NoteResponseDto> {
+    return await this.noteService.create(req.user.userId, createNoteDto);
   }
 
   // -------------// GET by ID //---------- //
@@ -69,8 +74,11 @@ export class NoteController {
     type: NoteResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Note not found.' })
-  async findOne(@Param('id') id: string): Promise<NoteResponseDto> {
-    return await this.noteService.findOne(id);
+  async findOne(
+    @Req() req: RequestWithUser,
+    @Param('id') id: string,
+  ): Promise<NoteResponseDto> {
+    return await this.noteService.findOne(id, req.user.userId);
   }
 
   //--------// UPDATE //--------//
@@ -85,10 +93,11 @@ export class NoteController {
   })
   @ApiResponse({ status: 404, description: 'Note not found.' })
   async update(
+    @Req() req: RequestWithUser,
     @Param('id') id: string,
     @Body() updateNoteDto: UpdateNoteDto,
   ): Promise<NoteResponseDto> {
-    return await this.noteService.update(id, updateNoteDto);
+    return await this.noteService.update(id, req.user.userId, updateNoteDto);
   }
 
   //--------// DELETE //--------//
@@ -102,8 +111,11 @@ export class NoteController {
     description: 'The note has been successfully deleted.',
   })
   @ApiResponse({ status: 404, description: 'Note not found.' })
-  async remove(@Param('id') id: string): Promise<void> {
-    return await this.noteService.remove(id);
+  async remove(
+    @Req() req: RequestWithUser,
+    @Param('id') id: string,
+  ): Promise<void> {
+    return await this.noteService.remove(id, req.user.userId);
   }
 
   //---------------------------// ATTACHMENTS //--------//
@@ -135,10 +147,11 @@ export class NoteController {
   })
   @ApiResponse({ status: 404, description: 'Note not found.' })
   uploadAttachment(
+    @Req() req: RequestWithUser,
     @Param('id') noteId: string,
     @UploadedFile() file: Express.Multer.File,
   ): Promise<NoteAttachmentResponseDto> {
-    return this.noteService.addAttachment(noteId, file);
+    return this.noteService.addAttachment(noteId, req.user.userId, file);
   }
 
   //--------// GET ALL ATTACHMENTS OF THE NOTE //--------//
@@ -152,9 +165,10 @@ export class NoteController {
   })
   @ApiResponse({ status: 404, description: 'Attachments not found' })
   async findAllAttachmentsOfTheNote(
+    @Req() req: RequestWithUser,
     @Param('id') id: string,
   ): Promise<NoteAttachmentResponseDto[]> {
-    return await this.noteService.getAllAttachments(id);
+    return await this.noteService.getAllAttachments(id, req.user.userId);
   }
 
   //--------// REMOVE AN ATTACHMENT OF THE NOTE //--------//

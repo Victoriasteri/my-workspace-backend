@@ -2,7 +2,6 @@ import {
   BadGatewayException,
   BadRequestException,
   Injectable,
-  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -14,25 +13,35 @@ import { Repository } from 'typeorm';
 import { StorageService } from '../../services/storage/storage.service';
 import { NoteAttachment } from '../entities/note-attachment.entity';
 import { NoteAttachmentResponseDto } from '../dto/note-attachment-response.dto';
+import { UserOwnedService } from '../../shared/srvices/owned-by-user.service';
 
 @Injectable()
-export class NoteService {
+export class NoteService extends UserOwnedService<Note> {
   constructor(
     @InjectRepository(Note)
-    private noteRepository: Repository<Note>,
+    noteRepository: Repository<Note>,
     private storageService: StorageService,
     @InjectRepository(NoteAttachment)
     private noteAttachmentRepo: Repository<NoteAttachment>,
-  ) {}
+  ) {
+    super(noteRepository);
+  }
 
-  async create(createNoteDto: CreateNoteDto): Promise<NoteResponseDto> {
-    const note = this.noteRepository.create({
+  async create(
+    userId: string,
+    createNoteDto: CreateNoteDto,
+  ): Promise<NoteResponseDto> {
+    const savedNote = await this.createForUser(userId, {
       title: createNoteDto.title,
       content: createNoteDto.content,
-    });
-    const savedNote = await this.noteRepository.save(note);
+    } as Omit<Note, 'id' | 'userId'>);
 
-    return this.toResponseDto(savedNote);
+    const noteWithRelations = await this.repo.findOne({
+      where: { id: savedNote.id },
+      relations: ['attachments'],
+    });
+
+    return this.toResponseDto(noteWithRelations || savedNote);
   }
 
   // Helper method to transform Note to NoteResponseDto
@@ -47,32 +56,23 @@ export class NoteService {
     };
   }
 
-  // Get all notes
-  async findAll(): Promise<NoteResponseDto[]> {
-    const notes = await this.noteRepository.find({
-      relations: ['attachments'],
+  // Get all notes for a user
+  async findAll(userId: string): Promise<NoteResponseDto[]> {
+    const notes = await this.findAllForUser(userId, {
+      attachments: true,
     });
     return notes.map((note) => this.toResponseDto(note));
   }
 
-  // Get a single note by ID
-  async findOne(id: string): Promise<NoteResponseDto> {
-    const note = await this.noteRepository.findOne({
-      where: { id },
-      relations: ['attachments'],
-    });
-    if (!note) {
-      throw new NotFoundException(`Note with ID ${id} not found`);
-    }
+  // Get a single note by ID for a user
+  async findOne(id: string, userId: string): Promise<NoteResponseDto> {
+    const note = await this.findOneEntity(id, userId);
     return this.toResponseDto(note);
   }
 
   // Internal method to get full Note entity (used by other methods)
-  private async findOneEntity(id: string): Promise<Note> {
-    const note = await this.noteRepository.findOne({
-      where: { id },
-      relations: ['attachments'],
-    });
+  private async findOneEntity(id: string, userId: string): Promise<Note> {
+    const note = await this.findOneForUser(id, userId, { attachments: true });
     if (!note) {
       throw new NotFoundException(`Note with ID ${id} not found`);
     }
@@ -82,39 +82,32 @@ export class NoteService {
   // Update a note
   async update(
     id: string,
+    userId: string,
     updateNoteDto: UpdateNoteDto,
   ): Promise<NoteResponseDto> {
-    const note = await this.findOneEntity(id);
+    const updateData: Partial<Omit<Note, 'id' | 'userId'>> = {
+      ...updateNoteDto,
+      updatedAt: new Date(),
+    };
 
-    if (updateNoteDto.title !== undefined) {
-      note.title = updateNoteDto.title;
-    }
-    if (updateNoteDto.content !== undefined) {
-      note.content = updateNoteDto.content;
-    }
-
-    // Set updatedAt when note is modified
-    note.updatedAt = new Date();
-
-    const updatedNote = await this.noteRepository.save(note);
+    await this.updateForUser(id, userId, updateData);
+    const updatedNote = await this.findOneEntity(id, userId);
     return this.toResponseDto(updatedNote);
   }
 
   // Delete a note
-  async remove(id: string): Promise<void> {
-    const result = await this.noteRepository.delete(id);
-    if (result.affected === 0) {
-      throw new NotFoundException(`Note with ID ${id} not found`);
-    }
+  async remove(id: string, userId: string): Promise<void> {
+    await this.deleteForUser(id, userId);
   }
 
   //////////////////// attachments ////////////////
 
   async addAttachment(
     noteId: string,
+    userId: string,
     file: Express.Multer.File,
   ): Promise<NoteAttachmentResponseDto> {
-    const currentNote = await this.findOneEntity(noteId);
+    const currentNote = await this.findOneEntity(noteId, userId);
 
     const supabaseResponse = await this.storageService.uploadFile(file);
 
@@ -152,9 +145,10 @@ export class NoteService {
 
   async getAllAttachments(
     noteId: string,
+    userId: string,
   ): Promise<NoteAttachmentResponseDto[]> {
-    // Verify note exists
-    await this.findOneEntity(noteId);
+    // Verify note exists and belongs to user
+    await this.findOneEntity(noteId, userId);
 
     // Get all attachments for this note
     const attachments = await this.noteAttachmentRepo.find({

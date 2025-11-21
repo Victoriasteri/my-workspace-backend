@@ -15,6 +15,7 @@ import {
   UserResponseDto,
 } from 'src/users/dto/user-response.dto';
 import { UserLoginDto } from 'src/users/dto/user-login.dto';
+import { use } from 'passport';
 
 @Injectable()
 export class AuthService {
@@ -25,6 +26,8 @@ export class AuthService {
   ) {}
 
   async createUser(user: CreateUserDto): Promise<UserResponseDto> {
+    if (!user) throw new BadRequestException('User data is required');
+
     const existingUser = await this.userRepo.findOne({
       where: { email: user.email },
     });
@@ -51,14 +54,16 @@ export class AuthService {
   }
 
   async loginUser(userData: UserLoginDto): Promise<UserLoginResponse> {
+    if (!userData)
+      throw new BadRequestException(
+        'email and password are required for login',
+      );
+
     const existingUser = await this.userRepo.findOne({
       where: { email: userData.email },
     });
 
-    if (!existingUser)
-      throw new NotFoundException(
-        `user with email ${userData.email} not found`,
-      );
+    if (!existingUser) throw new NotFoundException('Invalid email');
 
     const isValidPassword = await bcrypt.compare(
       userData.password,

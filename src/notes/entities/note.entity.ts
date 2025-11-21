@@ -53,4 +53,11 @@ export class Note {
   })
   @OneToMany(() => NoteAttachment, (attachment) => attachment.note)
   attachments: NoteAttachment[];
+
+  @ApiProperty({
+    description: 'The ID of the user who owns this note',
+    example: 'user-uuid-here',
+  })
+  @Column('uuid')
+  userId: string;
 }
